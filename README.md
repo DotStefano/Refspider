@@ -4,6 +4,10 @@
 
 # Refspider
 
+Añade enlaces clicables a las citas, figuras y tablas de un PDF académico.
+
+Selecciona el PDF, indica el formato de las citas (corchetes, paréntesis o superíndice) y las páginas de la bibliografía. Refspider crea una copia del documento con los enlaces: cada cita lleva a su entrada en la bibliografía, y cada mención de figura o tabla lleva a su leyenda.
+
 ## Descargar la app
 
 No hace falta instalar Python. Descarga la versión para tu sistema desde la última release:
@@ -12,13 +16,16 @@ No hace falta instalar Python. Descarga la versión para tu sistema desde la úl
 - **Windows 11:** [Refspider-windows.zip](https://github.com/DotStefano/Refspider/releases/latest/download/Refspider-windows.zip). Si aparece SmartScreen, pulsa **Más información** y luego **Ejecutar de todas formas**.
 - **Linux:** [Refspider-linux.tar.gz](https://github.com/DotStefano/Refspider/releases/latest/download/Refspider-linux.tar.gz). Descomprime, dale permisos con `chmod +x Refspider` y ejecútalo.
 
-## Ejecutar desde el código
-
-Añade enlaces clicables a las citas, figuras y tablas de un PDF académico.
-
-Selecciona el PDF, indica el formato de las citas (corchetes, paréntesis o superíndice) y las páginas de la bibliografía. Refspider crea una copia del documento con los enlaces: cada cita lleva a su entrada en la bibliografía, y cada mención de figura o tabla lleva a su leyenda.
-
 ## Uso
+
+1. Pulsa **Seleccionar PDF** y elige el documento.
+2. Marca el formato de las citas: corchetes `[1]`, paréntesis `(1)` o superíndice.
+3. Indica desde qué página a qué página está la bibliografía.
+4. Si quieres, activa **También enlazar figuras y tablas**.
+5. Escribe el nombre del PDF de salida, o deja el propuesto.
+6. Pulsa **Crear PDF con enlaces**. La copia con los enlaces se guarda junto al original.
+
+## Ejecutar desde el código
 
 ```bash
 pip install -r requirements.txt
