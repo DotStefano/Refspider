@@ -26,4 +26,4 @@ python3 refspider.py
 
 ## Licencia
 
-Pendiente de definir.
+MIT. Consulta el archivo [LICENSE](LICENSE).
