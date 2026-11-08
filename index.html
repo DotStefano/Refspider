@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Refspider · enlaces para citas en PDF</title>
+  <meta name="description" content="Refspider añade enlaces clicables a las citas, figuras y tablas de un PDF académico.">
+  <link rel="icon" href="refspider_icono_64.png">
+  <style>
+    :root {
+      --fondo: #EEEBE5;
+      --tarjeta: #F8F6F2;
+      --borde: #D6D0C4;
+      --tinta: #2E3A3F;
+      --apagado: #7D868B;
+      --acento: #5E7D78;
+      --acento-oscuro: #4D6A65;
+      --rojo: #B8432F;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--fondo);
+      color: var(--tinta);
+      font: 17px/1.6 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: 56px 24px 72px; }
+    header { display: flex; align-items: center; gap: 18px; }
+    header img { width: 72px; height: 72px; }
+    h1 { font: 700 40px/1.1 Georgia, serif; margin: 0; letter-spacing: -0.5px; }
+    h1 .ref { color: var(--rojo); }
+    .lema { font: italic 19px Georgia, serif; color: var(--apagado); margin: 18px 0 40px; }
+    h2 {
+      font: 700 13px "Helvetica Neue", Helvetica, sans-serif;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--acento);
+      margin: 44px 0 14px;
+    }
+    p { margin: 0 0 14px; }
+    .bloque {
+      background: var(--tarjeta);
+      border: 1px solid var(--borde);
+      border-radius: 12px;
+      padding: 22px 24px;
+    }
+    pre {
+      background: var(--fondo);
+      border: 1px solid var(--borde);
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font: 15px/1.5 Menlo, Consolas, monospace;
+      margin: 0;
+    }
+    ul { padding-left: 20px; margin: 0; }
+    li { margin-bottom: 8px; }
+    .botones { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+    a.boton {
+      display: inline-block;
+      background: var(--acento);
+      color: var(--tarjeta);
+      text-decoration: none;
+      font-weight: 700;
+      padding: 12px 20px;
+      border-radius: 8px;
+    }
+    a.boton:hover { background: var(--acento-oscuro); }
+    a.boton.secundario { background: transparent; color: var(--acento); border: 1px solid var(--acento); }
+    a.boton.secundario:hover { background: var(--tarjeta); }
+    footer { margin-top: 64px; color: var(--apagado); font-size: 14px; }
+    code { font: 15px Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="refspider_icono_limpio.png" alt="Logo de Refspider">
+    <h1><span class="ref">Ref</span>spider</h1>
+  </header>
+  <p class="lema">Convierte las citas, figuras y tablas de un PDF académico en enlaces navegables.</p>
+
+  <h2>Qué hace</h2>
+  <div class="bloque">
+    <ul>
+      <li>Enlaza cada cita <code>[1]</code>, <code>(1)</code> o superíndice con su entrada en la bibliografía.</li>
+      <li>Enlaza las menciones «Figura n» y «Tabla n» con su leyenda, si lo activas.</li>
+      <li>Trabaja con documentos de varias páginas y con la bibliografía repartida en varias.</li>
+      <li>Crea una copia nueva del PDF y deja el original intacto.</li>
+    </ul>
+  </div>
+
+  <h2>Cómo usarlo</h2>
+  <div class="bloque">
+    <pre>pip install -r requirements.txt
+python3 refspider.py</pre>
+    <div class="botones">
+      <a class="boton" href="https://github.com/DotStefano/refspider">Ver el código</a>
+      <a class="boton secundario" href="https://github.com/DotStefano/refspider/archive/refs/heads/main.zip">Descargar</a>
+    </div>
+  </div>
+
+  <h2>Limitaciones</h2>
+  <div class="bloque">
+    <ul>
+      <li>Las leyendas de figuras y tablas deben empezar por «Figura n.» o «Tabla n:».</li>
+      <li>En el modo paréntesis, un año como <code>(2021)</code> también se detecta como cita.</li>
+      <li>Los superíndices dependen de cómo se generó el PDF.</li>
+    </ul>
+  </div>
+
+  <footer>
+    Hecho por <a href="https://dotstefano.github.io/">Stefano Simonetti Macaya</a> · Código abierto en GitHub.
+  </footer>
+</main>
+</body>
+</html>
