@@ -1,0 +1,107 @@
+name: Compilar y publicar
+
+# Se ejecuta al publicar un tag (por ejemplo v0.1.0) o a mano desde la pestaña Actions.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller pillow
+
+      # ---------- macOS: icono .icns y compilación .app ----------
+      - name: Crear icono macOS (.icns)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p Refspider.iconset
+          for s in 16 32 128 256 512; do
+            sips -z $s $s refspider_icono_limpio.png --out Refspider.iconset/icon_${s}x${s}.png
+            sips -z $((s*2)) $((s*2)) refspider_icono_limpio.png --out Refspider.iconset/icon_${s}x${s}@2x.png
+          done
+          iconutil -c icns Refspider.iconset -o Refspider.icns
+
+      - name: Compilar en macOS
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller --noconfirm --windowed --onefile --name Refspider \
+            --icon Refspider.icns \
+            --add-data "refspider_icono_64.png:." refspider.py
+          cd dist && ditto -c -k --keepParent Refspider.app ../Refspider-macos.zip
+
+      # ---------- Windows: icono .ico y ejecutable .exe ----------
+      - name: Crear icono Windows (.ico)
+        if: runner.os == 'Windows'
+        shell: python
+        run: |
+          from PIL import Image
+          Image.open("refspider_icono_limpio.png").save(
+              "Refspider.ico",
+              sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+
+      - name: Compilar en Windows
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --noconfirm --windowed --onefile --name Refspider `
+            --icon Refspider.ico `
+            --add-data "refspider_icono_64.png;." refspider.py
+          Compress-Archive -Path dist\Refspider.exe -DestinationPath Refspider-windows.zip
+
+      # ---------- Linux: binario único ----------
+      - name: Compilar en Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk
+          pyinstaller --noconfirm --onefile --name Refspider \
+            --add-data "refspider_icono_64.png:." refspider.py
+          tar -czf Refspider-linux.tar.gz -C dist Refspider
+
+      - name: Guardar el resultado
+        uses: actions/upload-artifact@v4
+        with:
+          name: refspider-${{ runner.os }}
+          path: |
+            Refspider-*.zip
+            Refspider-*.tar.gz
+          if-no-files-found: error
+
+  publicar:
+    # Solo cuando se publica un tag, para subir los archivos a la release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: compilar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar los resultados
+        uses: actions/download-artifact@v4
+        with:
+          path: descargas
+          merge-multiple: true
+
+      - name: Subir a la release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: descargas/*
+          generate_release_notes: true
