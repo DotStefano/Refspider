@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Refspider · enlaces para citas en PDF</title>
-  <meta name="description" content="Refspider añade enlaces clicables a las citas, figuras y tablas de un PDF académico.">
+  <meta name="description" content="Refspider añade enlaces clicables a las citas, figuras y tablas de un PDF académico. Gratis, de código abierto y sin subir tus documentos a ningún sitio.">
   <link rel="icon" href="refspider_icono_64.png">
   <style>
     :root {
@@ -16,102 +16,268 @@
       --acento: #5E7D78;
       --acento-oscuro: #4D6A65;
       --rojo: #B8432F;
+      --sombra: 0 1px 2px rgba(46, 58, 63, 0.06), 0 8px 24px rgba(46, 58, 63, 0.06);
     }
     * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
     body {
       margin: 0;
       background: var(--fondo);
       color: var(--tinta);
       font: 17px/1.6 "Helvetica Neue", Helvetica, Arial, sans-serif;
     }
-    main { max-width: 760px; margin: 0 auto; padding: 56px 24px 72px; }
-    header { display: flex; align-items: center; gap: 18px; }
-    header img { width: 72px; height: 72px; }
-    h1 { font: 700 40px/1.1 Georgia, serif; margin: 0; letter-spacing: -0.5px; }
-    h1 .ref { color: var(--rojo); }
-    .lema { font: italic 19px Georgia, serif; color: var(--apagado); margin: 18px 0 40px; }
-    h2 {
-      font: 700 13px "Helvetica Neue", Helvetica, sans-serif;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      color: var(--acento);
-      margin: 44px 0 14px;
+    a { color: var(--acento); }
+    .contenedor { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+    /* Cabecera */
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 22px 0;
     }
-    p { margin: 0 0 14px; }
-    .bloque {
+    nav .marca { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--tinta); font: 700 18px Georgia, serif; }
+    nav .marca img { width: 30px; height: 30px; }
+    nav .enlaces a { color: var(--apagado); text-decoration: none; margin-left: 22px; font-size: 15px; }
+    nav .enlaces a:hover { color: var(--tinta); }
+
+    /* Hero */
+    .hero { text-align: center; padding: 48px 0 40px; }
+    .hero img.logo { width: 128px; height: 128px; }
+    h1 { font: 700 56px/1.05 Georgia, serif; margin: 22px 0 6px; letter-spacing: -1px; }
+    h1 .ref { color: var(--rojo); }
+    .lema { font: italic 21px Georgia, serif; color: var(--apagado); margin: 0 auto 34px; max-width: 620px; }
+
+    .botones { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+    .boton {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--acento); color: var(--tarjeta);
+      text-decoration: none; font-weight: 700; font-size: 16px;
+      padding: 14px 22px; border-radius: 10px;
+      box-shadow: var(--sombra);
+    }
+    .boton:hover { background: var(--acento-oscuro); }
+    .boton.secundario { background: var(--tarjeta); color: var(--acento); border: 1px solid var(--borde); }
+    .boton.secundario:hover { background: #fff; }
+    .nota { font-size: 14px; color: var(--apagado); margin-top: 14px; }
+
+    /* Ventana de la app */
+    .ventana {
+      margin: 56px auto 0;
+      max-width: 760px;
       background: var(--tarjeta);
       border: 1px solid var(--borde);
-      border-radius: 12px;
-      padding: 22px 24px;
+      border-radius: 14px;
+      box-shadow: var(--sombra);
+      overflow: hidden;
+      text-align: left;
     }
-    pre {
-      background: var(--fondo);
-      border: 1px solid var(--borde);
-      border-radius: 8px;
-      padding: 14px 16px;
-      overflow-x: auto;
-      font: 15px/1.5 Menlo, Consolas, monospace;
-      margin: 0;
+    .ventana .barra {
+      background: #E4E0D7; padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid var(--borde);
     }
-    ul { padding-left: 20px; margin: 0; }
-    li { margin-bottom: 8px; }
-    .botones { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
-    a.boton {
-      display: inline-block;
-      background: var(--acento);
-      color: var(--tarjeta);
-      text-decoration: none;
-      font-weight: 700;
-      padding: 12px 20px;
-      border-radius: 8px;
+    .ventana .barra i { width: 12px; height: 12px; border-radius: 50%; background: #C9C3B6; display: block; }
+    .ventana .barra span { margin-left: auto; margin-right: auto; font-size: 13px; color: var(--apagado); transform: translateX(-26px); }
+    .ventana .cuerpo { padding: 26px 28px 30px; }
+    .ventana .fila { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+    .ventana .campo {
+      background: #FBFAF7; border: 1px solid var(--borde); border-radius: 6px;
+      padding: 8px 12px; font-size: 14px; color: var(--apagado); min-width: 120px;
     }
-    a.boton:hover { background: var(--acento-oscuro); }
-    a.boton.secundario { background: transparent; color: var(--acento); border: 1px solid var(--acento); }
-    a.boton.secundario:hover { background: var(--tarjeta); }
-    footer { margin-top: 64px; color: var(--apagado); font-size: 14px; }
-    code { font: 15px Menlo, Consolas, monospace; }
+    .ventana .campo.lleno { color: var(--tinta); }
+    .ventana .boton-mini {
+      background: var(--boton, #E4E0D7); border: 1px solid var(--borde); border-radius: 6px;
+      padding: 8px 14px; font-size: 14px; color: var(--tinta);
+    }
+    .ventana .ok {
+      margin-top: 18px; background: #E9EFEC; border: 1px solid #C9D6D1; border-radius: 8px;
+      padding: 12px 16px; font-size: 14px; color: var(--acento-oscuro);
+    }
+    .ventana .ok b { color: var(--tinta); }
+
+    /* Secciones */
+    section { padding: 72px 0 8px; }
+    h2 {
+      font: 700 13px "Helvetica Neue", Helvetica, sans-serif;
+      letter-spacing: 1.4px; text-transform: uppercase; color: var(--acento);
+      margin: 0 0 18px;
+    }
+    h3 { font: 700 20px Georgia, serif; margin: 0 0 8px; }
+    p { margin: 0 0 12px; }
+
+    .tarjetas { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+    .tarjeta {
+      background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 14px;
+      padding: 26px 24px; box-shadow: var(--sombra);
+    }
+    .tarjeta .icono {
+      width: 40px; height: 40px; border-radius: 10px; background: #E9EFEC;
+      color: var(--acento); display: grid; place-items: center; font: 700 18px Georgia, serif; margin-bottom: 14px;
+    }
+    .tarjeta p { color: #55606a; font-size: 16px; margin: 0; }
+
+    .pasos { counter-reset: paso; display: grid; gap: 14px; }
+    .paso {
+      display: grid; grid-template-columns: 44px 1fr; gap: 16px; align-items: start;
+      background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 14px; padding: 18px 20px;
+    }
+    .paso .num {
+      width: 44px; height: 44px; border-radius: 50%; background: var(--acento); color: var(--tarjeta);
+      display: grid; place-items: center; font: 700 18px Georgia, serif;
+    }
+    .paso p { margin: 0; color: #55606a; }
+
+    .sistemas { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
+    .sistema { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 14px; padding: 24px; box-shadow: var(--sombra); }
+    .sistema h3 { margin-bottom: 4px; }
+    .sistema .peso { font-size: 14px; color: var(--apagado); margin-bottom: 14px; }
+    .sistema ol { padding-left: 18px; margin: 0 0 18px; color: #55606a; font-size: 15px; }
+    .sistema ol li { margin-bottom: 6px; }
+    .sistema a.boton { width: 100%; justify-content: center; }
+
+    code { font: 14px Menlo, Consolas, monospace; background: #E4E0D7; padding: 1px 6px; border-radius: 4px; }
+
+    .limitaciones { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 14px; padding: 22px 26px; }
+    .limitaciones ul { margin: 0; padding-left: 20px; color: #55606a; }
+    .limitaciones li { margin-bottom: 8px; }
+
+    footer {
+      margin-top: 80px; padding: 28px 0 40px; border-top: 1px solid var(--borde);
+      display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px;
+      color: var(--apagado); font-size: 14px;
+    }
+    footer a { color: var(--apagado); }
+
+    @media (max-width: 640px) {
+      h1 { font-size: 42px; }
+      .hero img.logo { width: 96px; height: 96px; }
+      nav .enlaces { display: none; }
+      .ventana .cuerpo { padding: 20px; }
+    }
   </style>
 </head>
 <body>
-<main>
-  <header>
-    <img src="refspider_icono_limpio.png" alt="Logo de Refspider">
-    <h1><span class="ref">Ref</span>spider</h1>
-  </header>
-  <p class="lema">Convierte las citas, figuras y tablas de un PDF académico en enlaces navegables.</p>
 
-  <h2>Qué hace</h2>
-  <div class="bloque">
-    <ul>
-      <li>Enlaza cada cita <code>[1]</code>, <code>(1)</code> o superíndice con su entrada en la bibliografía.</li>
-      <li>Enlaza las menciones «Figura n» y «Tabla n» con su leyenda, si lo activas.</li>
-      <li>Trabaja con documentos de varias páginas y con la bibliografía repartida en varias.</li>
-      <li>Crea una copia nueva del PDF y deja el original intacto.</li>
-    </ul>
-  </div>
-
-  <h2>Cómo usarlo</h2>
-  <div class="bloque">
-    <pre>pip install -r requirements.txt
-python3 refspider.py</pre>
-    <div class="botones">
-      <a class="boton" href="https://github.com/DotStefano/refspider">Ver el código</a>
-      <a class="boton secundario" href="https://github.com/DotStefano/refspider/archive/refs/heads/main.zip">Descargar</a>
+<div class="contenedor">
+  <nav>
+    <a class="marca" href="#"><img src="refspider_icono_64.png" alt="">Refspider</a>
+    <div class="enlaces">
+      <a href="#funciones">Funciones</a>
+      <a href="#como">Cómo funciona</a>
+      <a href="#descargas">Descargas</a>
+      <a href="https://github.com/DotStefano/Refspider">Código</a>
     </div>
-  </div>
+  </nav>
 
-  <h2>Limitaciones</h2>
-  <div class="bloque">
-    <ul>
-      <li>Las leyendas de figuras y tablas deben empezar por «Figura n.» o «Tabla n:».</li>
-      <li>En el modo paréntesis, un año como <code>(2021)</code> también se detecta como cita.</li>
-      <li>Los superíndices dependen de cómo se generó el PDF.</li>
-    </ul>
-  </div>
+  <header class="hero">
+    <img class="logo" src="refspider_icono_limpio.png" alt="Logo de Refspider, una araña en una telaraña">
+    <h1><span class="ref">Ref</span>spider</h1>
+    <p class="lema">Convierte las citas, figuras y tablas de tus PDF académicos en enlaces navegables, sin subir tus documentos a ningún sitio.</p>
+    <div class="botones">
+      <a class="boton" href="https://github.com/DotStefano/Refspider/releases/latest/download/Refspider-macos.zip">Descargar para macOS</a>
+      <a class="boton secundario" href="#descargas">Windows y Linux</a>
+    </div>
+    <p class="nota">Gratis y de código abierto.</p>
+
+    <div class="ventana" aria-hidden="true">
+      <div class="barra"><i></i><i></i><i></i><span>Refspider</span></div>
+      <div class="cuerpo">
+        <div class="fila">
+          <div class="campo lleno">tesis-capitulo-2.pdf</div>
+          <div class="boton-mini">Seleccionar PDF…</div>
+        </div>
+        <div class="fila">
+          <div class="campo lleno" style="min-width:160px">Corchetes [1]</div>
+          <div class="campo lleno" style="min-width:160px">Bibliografía: pág. 14 a 15</div>
+        </div>
+        <div class="fila">
+          <div class="campo lleno" style="min-width:260px">tesis-capitulo-2_enlaces</div>
+          <div class="boton-mini" style="background:#5E7D78;color:#F8F6F2;border-color:#5E7D78;font-weight:700">Crear PDF con enlaces</div>
+        </div>
+        <div class="ok"><b>Listo.</b> 84 enlaces a citas y 9 a figuras y tablas.</div>
+      </div>
+    </div>
+  </header>
+
+  <section id="funciones">
+    <h2>Funciones</h2>
+    <div class="tarjetas">
+      <div class="tarjeta">
+        <div class="icono">[1]</div>
+        <h3>Citas enlazadas</h3>
+        <p>Cada cita <code>[1]</code>, <code>(1)</code> o superíndice se enlaza con su entrada en la bibliografía. Funciona con varias citas juntas, como <code>[1][3]</code> o <code>[2–4]</code>.</p>
+      </div>
+      <div class="tarjeta">
+        <div class="icono">Fig</div>
+        <h3>Figuras y tablas</h3>
+        <p>Las menciones «Figura n» y «Tabla n» llevan a su leyenda, aunque aparezcan en otra página.</p>
+      </div>
+      <div class="tarjeta">
+        <div class="icono">✓</div>
+        <h3>Tu documento, en tu equipo</h3>
+        <p>Todo ocurre en tu ordenador. El PDF original no se modifica: se genera una copia nueva con los enlaces.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="como">
+    <h2>Cómo funciona</h2>
+    <div class="pasos">
+      <div class="paso"><div class="num">1</div><p><b>Elige el PDF</b> con el botón de selección.</p></div>
+      <div class="paso"><div class="num">2</div><p><b>Indica el formato de las citas:</b> corchetes, paréntesis o superíndice.</p></div>
+      <div class="paso"><div class="num">3</div><p><b>Señala las páginas de la bibliografía</b> y, si quieres, activa la opción de figuras y tablas.</p></div>
+      <div class="paso"><div class="num">4</div><p><b>Pulsa «Crear PDF con enlaces»</b> y abre la copia con los enlaces ya listos.</p></div>
+    </div>
+  </section>
+
+  <section id="descargas">
+    <h2>Descargas</h2>
+    <div class="sistemas">
+      <div class="sistema">
+        <h3>macOS</h3>
+        <div class="peso">Apple Silicon e Intel · ~41 MB</div>
+        <ol>
+          <li>Descomprime el archivo.</li>
+          <li>La primera vez, haz clic derecho sobre la app y elige <b>Abrir</b>.</li>
+        </ol>
+        <a class="boton" href="https://github.com/DotStefano/Refspider/releases/latest/download/Refspider-macos.zip">Descargar</a>
+      </div>
+      <div class="sistema">
+        <h3>Windows 11</h3>
+        <div class="peso">Ejecutable · ~47 MB</div>
+        <ol>
+          <li>Descomprime el archivo y ejecuta <code>Refspider.exe</code>.</li>
+          <li>Si aparece SmartScreen, pulsa <b>Más información</b> y luego <b>Ejecutar de todas formas</b>.</li>
+        </ol>
+        <a class="boton" href="https://github.com/DotStefano/Refspider/releases/latest/download/Refspider-windows.zip">Descargar</a>
+      </div>
+      <div class="sistema">
+        <h3>Linux</h3>
+        <div class="peso">Binario · ~72 MB</div>
+        <ol>
+          <li>Descomprime con <code>tar -xzf</code>.</li>
+          <li>Dale permisos con <code>chmod +x Refspider</code> y ejecútalo.</li>
+        </ol>
+        <a class="boton" href="https://github.com/DotStefano/Refspider/releases/latest/download/Refspider-linux.tar.gz">Descargar</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Limitaciones</h2>
+    <div class="limitaciones">
+      <ul>
+        <li>Las leyendas de figuras y tablas deben empezar por «Figura n.» o «Tabla n:».</li>
+        <li>En el modo paréntesis, un año como <code>(2021)</code> también se detecta como cita.</li>
+        <li>Los superíndices dependen de cómo se generó el PDF.</li>
+        <li>No está firmada con una cuenta de desarrollador, así que el sistema puede mostrar un aviso la primera vez.</li>
+      </ul>
+    </div>
+  </section>
 
   <footer>
-    Hecho por <a href="https://dotstefano.github.io/">Stefano Simonetti Macaya</a> · Código abierto en GitHub.
+    <span>Refspider · código abierto</span>
+    <span><a href="https://github.com/DotStefano/Refspider">GitHub</a> · <a href="https://dotstefano.github.io/">Stefano Simonetti Macaya</a></span>
   </footer>
-</main>
+</div>
+
 </body>
 </html>
