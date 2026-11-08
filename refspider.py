@@ -19,8 +19,19 @@ def _nums(texto):
     return nums
 
 
+AZUL_ENLACE = (0.165, 0.365, 0.69)   # azul mate para las citas enlazadas
+TINTA_RGB = (0.18, 0.23, 0.25)       # tinta para figuras y tablas, en negrita
+
+_PATRON_REF = r"\b(Figura|Figure|Fig\.|Tabla|Table)\s*(\d+)"
+_PATRON_LEYENDA = r"^(Figura|Figure|Fig\.|Tabla|Table)\s*(\d+)[\.:]"
+
+
+def _tipo(texto):
+    return "figura" if texto.lower().startswith("fig") else "tabla"
+
+
 def encontrar_citas(page, formato):
-    """Devuelve una lista de (rectángulo, [números citados])."""
+    """Devuelve una lista de (rectángulo, [números citados], texto original)."""
     resultados = []
     if formato == "superindice":
         for bloque in page.get_text("dict")["blocks"]:
@@ -29,7 +40,7 @@ def encontrar_citas(page, formato):
                     t = span["text"].strip()
                     # flags & 1 indica superíndice en PyMuPDF
                     if t and span["flags"] & 1 and re.fullmatch(r"[\d,–\-\s]+", t):
-                        resultados.append((pymupdf.Rect(span["bbox"]), _nums(t)))
+                        resultados.append((pymupdf.Rect(span["bbox"]), _nums(t), t))
     else:
         patron = {
             "corchetes": r"\[[\d,–\-\s]+\]",
@@ -37,7 +48,7 @@ def encontrar_citas(page, formato):
         }[formato]
         for m in re.finditer(patron, page.get_text()):
             for rect in page.search_for(m.group()):
-                resultados.append((rect, _nums(m.group())))
+                resultados.append((rect, _nums(m.group()), m.group()))
     return resultados
 
 
@@ -51,16 +62,6 @@ def destino_en_bibliografia(doc, paginas_bib, n):
             if rects:
                 return idx, pymupdf.Point(rects[0].x0, rects[0].y0)
     return None
-
-
-# ---------- Figuras y tablas (opcional) ----------
-
-_PATRON_REF = r"\b(Figura|Fig\.|Tabla)\s*(\d+)"
-_PATRON_LEYENDA = r"^(Figura|Fig\.|Tabla)\s*(\d+)[\.:]"
-
-
-def _tipo(texto):
-    return "figura" if texto.lower().startswith("fig") else "tabla"
 
 
 def mapa_leyendas(doc, omitir):
@@ -83,63 +84,158 @@ def mapa_leyendas(doc, omitir):
     return mapa
 
 
-def enlazar_figuras(doc, omitir, mapa):
-    """Enlaza las menciones 'Figura n' / 'Tabla n' con su leyenda.
-    No enlaza la propia leyenda ni las páginas de bibliografía."""
-    total = 0
-    for i, page in enumerate(doc):
-        if i in omitir:
-            continue
-        leyendas = [r for (idx, _, r) in mapa.values() if idx == i]
-        for m in re.finditer(_PATRON_REF, page.get_text()):
-            clave = (_tipo(m[1]), int(m[2]))
-            if clave not in mapa:
+def encontrar_menciones(page, leyendas):
+    """Menciones 'Figura n' / 'Tabla n' que no son la propia leyenda."""
+    menciones = []
+    for m in re.finditer(_PATRON_REF, page.get_text()):
+        clave = (_tipo(m[1]), int(m[2]))
+        for rect in page.search_for(m.group()):
+            if any(rect.intersects(r) for r in leyendas):
                 continue
-            for rect in page.search_for(m.group()):
-                if any(rect.intersects(r) for r in leyendas):
-                    continue  # es la propia leyenda
-                idx, punto, _ = mapa[clave]
-                page.insert_link({
-                    "kind": pymupdf.LINK_GOTO,
-                    "from": rect,
-                    "page": idx,
-                    "to": punto,
-                })
-                total += 1
-    return total
+            menciones.append((rect, clave, m.group()))
+    return menciones
 
 
-def procesar(entrada, salida, formato, pag_ini, pag_fin, con_figuras=False):
+def _spans(page):
+    """Todos los spans de la página, con sus caracteres y su estilo original."""
+    spans = []
+    for bloque in page.get_text("rawdict")["blocks"]:
+        for linea in bloque.get("lines", []):
+            spans.extend(linea["spans"])
+    return spans
+
+
+def _rgb(entero):
+    return (((entero >> 16) & 255) / 255, ((entero >> 8) & 255) / 255, (entero & 255) / 255)
+
+
+def _numeros_en(page, rect):
+    """Cada número dentro de la cita (secuencia de dígitos), con su valor y sus caracteres.
+    En '[2-5]' devuelve 2 y 5; en '[1, 3]' devuelve 1 y 3."""
+    chars = []
+    for span in _spans(page):
+        for ch in span.get("chars", []):
+            x0, y0, x1, y1 = ch["bbox"]
+            if rect.contains(pymupdf.Point((x0 + x1) / 2, (y0 + y1) / 2)):
+                chars.append(ch)
+    grupos, actual = [], []
+    for ch in chars:
+        if ch["c"].isdigit():
+            actual.append(ch)
+        elif actual:
+            grupos.append(actual)
+            actual = []
+    if actual:
+        grupos.append(actual)
+    return [(int("".join(c["c"] for c in g)), g) for g in grupos]
+
+
+def procesar(entrada, salida, formato, pag_ini, pag_fin, tipos=()):
+    """tipos: subconjunto de ('figura', 'tabla') que se quieren enlazar."""
     doc = pymupdf.open(entrada)
     paginas_bib = list(range(pag_ini - 1, pag_fin))  # índices 0-based
     if any(i < 0 or i >= len(doc) for i in paginas_bib):
-        raise ValueError(f"El rango de bibliografía no existe en un PDF de {len(doc)} páginas.")
+        raise ValueError(f"The bibliography page range does not exist in a PDF with {len(doc)} pages.")
 
+    mapa = {k: v for k, v in mapa_leyendas(doc, omitir=paginas_bib).items() if k[0] in tipos} if tipos else {}
     total = 0
+    total_figuras = 0
     sin_destino = []
+
     for i, page in enumerate(doc):
         if i in paginas_bib:
-            continue  # no enlazar dentro de la propia bibliografía
-        for rect, nums in encontrar_citas(page, formato):
+            continue  # no tocar la propia bibliografía
+        cambios = []  # (rect, color, negrita, página destino, punto, tipo)
+
+        for rect, nums, _ in encontrar_citas(page, formato):
             if not nums:
                 continue
-            destino = destino_en_bibliografia(doc, paginas_bib, nums[0])
-            if destino is None:
-                sin_destino.append(f"p.{i + 1}: {nums[0]}")
-                continue
-            idx, punto = destino
-            page.insert_link({
-                "kind": pymupdf.LINK_GOTO,
-                "from": rect,
-                "page": idx,
-                "to": punto,
-            })
-            total += 1
+            # Cada número de la cita (incluidos los extremos de un rango) tiene su propio enlace
+            for valor, grupo in _numeros_en(page, rect):
+                destino = destino_en_bibliografia(doc, paginas_bib, valor)
+                if destino is None:
+                    sin_destino.append(f"p.{i + 1}: {valor}")
+                    continue
+                idx, punto = destino
+                rect_num = pymupdf.Rect(grupo[0]["bbox"])
+                for ch in grupo[1:]:
+                    rect_num |= pymupdf.Rect(ch["bbox"])
+                cambios.append((rect_num, AZUL_ENLACE, False, idx, punto, "cita"))
 
-    total_figuras = 0
-    if con_figuras:
-        mapa = mapa_leyendas(doc, omitir=paginas_bib)
-        total_figuras = enlazar_figuras(doc, paginas_bib, mapa)
+        if tipos:
+            leyendas = [r for (idx, _, r) in mapa.values() if idx == i]
+            for rect, clave, _ in encontrar_menciones(page, leyendas):
+                if clave not in mapa:
+                    continue
+                idx, punto, _ = mapa[clave]
+                cambios.append((rect, TINTA_RGB, True, idx, punto, "figura"))
+
+        if not cambios:
+            continue
+
+        # Para cada span que contiene un enlace, asignamos a cada carácter
+        # su cambio (o None si no es parte de un enlace).
+        afectados = []  # (span, lista de cambio-o-None por carácter)
+        for span in _spans(page):
+            chars = span.get("chars", [])
+            asignados = [None] * len(chars)
+            tocado = False
+            for k, ch in enumerate(chars):
+                x0, y0, x1, y1 = ch["bbox"]
+                centro = pymupdf.Point((x0 + x1) / 2, (y0 + y1) / 2)
+                for cambio in cambios:
+                    if cambio[0].contains(centro):
+                        asignados[k] = cambio
+                        tocado = True
+                        break
+            if tocado:
+                afectados.append((span, asignados))
+        if not afectados:
+            continue
+
+        # 1) Borra el texto de los spans afectados (todos sus caracteres)
+        for span, _ in afectados:
+            for ch in span.get("chars", []):
+                caja = pymupdf.Rect(ch["bbox"])
+                page.add_redact_annot(pymupdf.Rect(caja.x0 + 0.2, caja.y0, caja.x1 - 0.2, caja.y1),
+                                      fill=(1, 1, 1))
+        page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE,
+                              graphics=pymupdf.PDF_REDACT_LINE_ART_NONE)
+
+        # 2) Reescribe cada carácter: con el estilo nuevo si es enlace, con el original si no
+        for span, asignados in afectados:
+            base_color = _rgb(span["color"])
+            base_font = "hebo" if (span.get("flags", 0) & 16 or "Bold" in span.get("font", "")) else "helv"
+            tamano = span["size"]
+            caja_por_cambio = {}
+            for ch, cambio in zip(span.get("chars", []), asignados):
+                # En las citas solo se colorea el número: corchetes y espacios conservan su estilo
+                if cambio is None or (cambio[5] == "cita" and ch["c"] in "[] "):
+                    fuente, color = base_font, base_color
+                else:
+                    _, color_c, negrita, _, _, _ = cambio
+                    fuente, color = ("hebo" if negrita else "helv"), color_c
+                page.insert_text(pymupdf.Point(ch["origin"]), ch["c"], fontsize=tamano,
+                                 fontname=fuente, color=color)
+                if cambio is not None:
+                    key = id(cambio)
+                    if key in caja_por_cambio:
+                        caja_por_cambio[key][0] |= pymupdf.Rect(ch["bbox"])
+                    else:
+                        caja_por_cambio[key] = [pymupdf.Rect(ch["bbox"]), cambio]
+
+            for rect_total, cambio in caja_por_cambio.values():
+                _, _, _, idx, punto, tipo = cambio
+                page.insert_link({
+                    "kind": pymupdf.LINK_GOTO,
+                    "from": rect_total,
+                    "page": idx,
+                    "to": punto,
+                })
+                if tipo == "cita":
+                    total += 1
+                else:
+                    total_figuras += 1
 
     doc.save(salida)
     return total, total_figuras, sin_destino
@@ -186,6 +282,7 @@ class App:
         self.pag_fin = tk.IntVar(value=2)
         self.nombre_salida = tk.StringVar(value="")
         self.figuras = tk.BooleanVar(value=False)
+        self.tablas = tk.BooleanVar(value=False)
 
         principal = ttk.Frame(root, padding=22)
         principal.pack(fill="both", expand=True)
@@ -195,49 +292,52 @@ class App:
         self._logo = tk.PhotoImage(file=str(recurso("refspider_icono_64.png")))
         ttk.Label(cabecera, image=self._logo).pack(side="left", padx=(0, 10))
         ttk.Label(cabecera, text="Refspider", style="Titulo.TLabel").pack(side="left")
-        ttk.Label(principal, text="Convierte citas, figuras y tablas en enlaces navegables",
+        ttk.Label(principal, text="Turns citations, figures and tables into clickable links",
                   style="Sub.TLabel").pack(anchor="w", pady=(0, 16))
 
         # 1. Documento
-        b1, c1 = self._tarjeta(principal, "1 · Documento")
+        b1, c1 = self._tarjeta(principal, "1 · Document")
         b1.pack(fill="x", pady=(0, 12))
-        ttk.Button(c1, text="Seleccionar PDF…", command=self.elegir).pack(anchor="w")
+        ttk.Button(c1, text="Select PDF…", command=self.elegir).pack(anchor="w")
         ttk.Label(c1, textvariable=self.ruta, style="Muted.TLabel",
                   wraplength=460).pack(anchor="w", pady=(8, 0))
 
         # 2. Citas
-        b2, c2 = self._tarjeta(principal, "2 · Formato de las citas")
+        b2, c2 = self._tarjeta(principal, "2 · Citation format")
         b2.pack(fill="x", pady=(0, 12))
         fila = ttk.Frame(c2, style="Card.TFrame")
         fila.pack(anchor="w")
-        for valor, texto in [("corchetes", "Corchetes  [1]"),
-                             ("parentesis", "Paréntesis  (1)"),
-                             ("superindice", "Superíndice  ¹")]:
+        for valor, texto in [("corchetes", "Brackets  [1]"),
+                             ("parentesis", "Parentheses  (1)"),
+                             ("superindice", "Superscript  ¹")]:
             ttk.Radiobutton(fila, text=texto, value=valor,
                             variable=self.formato).pack(side="left", padx=(0, 18))
-        ttk.Checkbutton(c2, text="También enlazar figuras y tablas (Figura n, Tabla n)",
-                        variable=self.figuras).pack(anchor="w", pady=(12, 0))
+        ttk.Label(c2, text="Also link:", style="Card.TLabel").pack(anchor="w", pady=(12, 0))
+        ttk.Checkbutton(c2, text="Figures  (Figure n)",
+                        variable=self.figuras).pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(c2, text="Tables  (Table n)",
+                        variable=self.tablas).pack(anchor="w", pady=(2, 0))
 
         # 3. Bibliografía y salida
-        b3, c3 = self._tarjeta(principal, "3 · Bibliografía y salida")
+        b3, c3 = self._tarjeta(principal, "3 · Bibliography and output")
         b3.pack(fill="x", pady=(0, 16))
         rango = ttk.Frame(c3, style="Card.TFrame")
         rango.pack(anchor="w")
-        ttk.Label(rango, text="Bibliografía, de la página", style="Card.TLabel").pack(side="left")
+        ttk.Label(rango, text="Bibliography, from page", style="Card.TLabel").pack(side="left")
         ttk.Spinbox(rango, from_=1, to=999, width=5,
                     textvariable=self.pag_ini).pack(side="left", padx=8)
-        ttk.Label(rango, text="a la", style="Card.TLabel").pack(side="left")
+        ttk.Label(rango, text="to page", style="Card.TLabel").pack(side="left")
         ttk.Spinbox(rango, from_=1, to=999, width=5,
                     textvariable=self.pag_fin).pack(side="left", padx=8)
 
         salida = ttk.Frame(c3, style="Card.TFrame")
         salida.pack(anchor="w", pady=(12, 0))
-        ttk.Label(salida, text="Nombre del PDF de salida", style="Card.TLabel").pack(side="left")
+        ttk.Label(salida, text="Output PDF name", style="Card.TLabel").pack(side="left")
         ttk.Entry(salida, textvariable=self.nombre_salida, width=34).pack(side="left", padx=8)
         ttk.Label(salida, text=".pdf", style="Muted.TLabel").pack(side="left")
 
         # Acción
-        ttk.Button(principal, text="Crear PDF con enlaces", style="Accent.TButton",
+        ttk.Button(principal, text="Create linked PDF", style="Accent.TButton",
                    command=self.ejecutar).pack(fill="x")
         self.estado = ttk.Label(principal, text="", style="Muted.TLabel")
         self.estado.pack(anchor="w", pady=(10, 0))
@@ -253,12 +353,16 @@ class App:
         st.configure("Secc.TLabel", background=TARJETA, foreground=ACENTO, font=FUENTE_SECC)
         st.configure("Titulo.TLabel", background=FONDO, foreground=TINTA, font=FUENTE_TITULO)
         st.configure("Sub.TLabel", background=FONDO, foreground=APAGADO, font=FUENTE_SUB)
-        st.configure("TRadiobutton", background=TARJETA, foreground=TINTA, font=FUENTE_TEXTO,
-                     focuscolor=TARJETA, indicatorbackground=CAMPO)
-        st.map("TRadiobutton", background=[("active", TARJETA)])
-        st.configure("TCheckbutton", background=TARJETA, foreground=TINTA, font=FUENTE_TEXTO,
-                     focuscolor=TARJETA, indicatorbackground=CAMPO)
-        st.map("TCheckbutton", background=[("active", TARJETA)])
+        # Casillas y botones de opción: el marcado debe verse con claridad (acento sobre campo)
+        for boton in ("TRadiobutton", "TCheckbutton"):
+            st.configure(boton, background=TARJETA, foreground=TINTA, font=FUENTE_TEXTO,
+                         focuscolor=TARJETA, indicatorbackground=CAMPO,
+                         indicatorforeground=ACENTO, indicatorrelief="flat",
+                         indicatormargin=(2, 2, 8, 2), padding=(2, 4))
+            st.map(boton,
+                   background=[("active", TARJETA)],
+                   indicatorbackground=[("pressed", BORDE), ("selected", CAMPO)],
+                   indicatorforeground=[("selected", ACENTO), ("!selected", CAMPO)])
         st.configure("TButton", background=BOTON, foreground=TINTA, font=FUENTE_TEXTO,
                      padding=(12, 7), borderwidth=0, focusthickness=0)
         st.map("TButton", background=[("active", BORDE)])
@@ -291,11 +395,11 @@ class App:
 
     def ejecutar(self):
         if not self.ruta.get():
-            messagebox.showwarning("Falta el archivo", "Selecciona un PDF primero.")
+            messagebox.showwarning("Missing file", "Select a PDF first.")
             return
         if self.pag_fin.get() < self.pag_ini.get():
-            messagebox.showwarning("Rango incorrecto",
-                                   "La página final no puede ser menor que la inicial.")
+            messagebox.showwarning("Invalid range",
+                                   "The last page cannot be before the first page.")
             return
         nombre = self.nombre_salida.get().strip() or Path(self.ruta.get()).stem + "_enlaces"
         if nombre.lower().endswith(".pdf"):
@@ -303,25 +407,26 @@ class App:
         entrada = Path(self.ruta.get())
         salida = entrada.with_name(nombre + ".pdf")
         if salida.resolve() == entrada.resolve():
-            messagebox.showwarning("Nombre repetido",
-                                   "El nombre de salida no puede ser el del original.")
+            messagebox.showwarning("Name clash",
+                                   "The output name cannot be the same as the original file.")
             return
         try:
+            tipos = tuple(t for t, v in [("figura", self.figuras), ("tabla", self.tablas)] if v.get())
             total, total_figuras, sin_destino = procesar(
                 str(entrada), str(salida), self.formato.get(),
                 int(self.pag_ini.get()), int(self.pag_fin.get()),
-                con_figuras=self.figuras.get())
+                tipos=tipos)
         except Exception as e:
             messagebox.showerror("Error", str(e))
             return
-        resumen = f"{total} enlaces a citas."
-        if self.figuras.get():
-            resumen += f"\n{total_figuras} enlaces a figuras y tablas."
+        resumen = f"{total} citation links."
+        if total_figuras:
+            resumen += f"\n{total_figuras} figure and table links."
         texto = resumen
         if sin_destino:
-            texto += "\n\nNo encontré la entrada de bibliografía para:\n" + "\n".join(sin_destino[:15])
-        self.estado.config(text=f"{total} citas y {total_figuras} figuras/tablas enlazadas.")
-        messagebox.showinfo("Listo", f"{texto}\n\n{salida}")
+            texto += "\n\nNo bibliography entry found for:\n" + "\n".join(sin_destino[:15])
+        self.estado.config(text=f"{total} citations and {total_figuras} figures/tables linked.")
+        messagebox.showinfo("Done", f"{texto}\n\n{salida}")
 
 
 if __name__ == "__main__":
