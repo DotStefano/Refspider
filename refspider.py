@@ -130,6 +130,74 @@ def _numeros_en(page, rect):
     return [(int("".join(c["c"] for c in g)), g) for g in grupos]
 
 
+def _fuente_original(doc, page, nombre, cache):
+    """Reutiliza la fuente embebida del PDF para que las letras no cambien de forma.
+    Devuelve (alias, objeto Font) o None si la fuente no está incluida en el archivo."""
+    def normal(t):
+        return re.sub(r"[^a-z0-9]", "", t.split("+")[-1].lower())
+
+    base = normal(nombre)
+    if base in cache:
+        return cache[base]
+    resultado = None
+    for f in page.get_fonts():
+        nombre_pdf = normal(f[3])
+        if base and nombre_pdf and (base in nombre_pdf or nombre_pdf in base):
+            try:
+                _, ext, _, contenido = doc.extract_font(f[0])
+            except Exception:
+                contenido = b""
+            if contenido and ext not in ("n/a", ""):
+                alias = f"orig{f[0]}"
+                page.insert_font(fontname=alias, fontbuffer=contenido)
+                resultado = (alias, pymupdf.Font(fontbuffer=contenido))
+            break
+    cache[base] = resultado
+    return resultado
+
+
+def _fuente_del_cuerpo(doc, omitir):
+    """Nombre de la fuente que más caracteres ocupa en el cuerpo del documento."""
+    conteo = {}
+    for i, page in enumerate(doc):
+        if i in omitir:
+            continue
+        for span in _spans(page):
+            nombre = span.get("font", "").split("+")[-1]
+            conteo[nombre] = conteo.get(nombre, 0) + len(span.get("chars", []))
+    return max(conteo, key=conteo.get) if conteo else None
+
+
+def _negrita_del_documento(doc, cuerpo):
+    """xref de la variante en negrita (Bold o Semibold) de la familia del cuerpo, buscada en todo el PDF."""
+    if not cuerpo:
+        return None
+    familia = cuerpo.split("-")[0].lower()
+    for page in doc:
+        for f in page.get_fonts():
+            nombre = f[3].split("+")[-1]
+            if nombre.lower().startswith(familia) and re.search(r"bold|semibold|black", nombre, re.I):
+                return f[0]
+    return None
+
+
+def _cargar_fuente(doc, page, xref, cache):
+    """Inserta en la página la fuente embebida con ese xref. Devuelve (alias, Font) o None."""
+    if xref in cache:
+        return cache[xref]
+    resultado = None
+    try:
+        _, ext, _, contenido = doc.extract_font(xref)
+    except Exception:
+        contenido = b""
+    if contenido and ext not in ("n/a", ""):
+        alias = f"orig{xref}"
+        page.insert_font(fontname=alias, fontbuffer=contenido)
+        resultado = (alias, pymupdf.Font(fontbuffer=contenido))
+    cache[xref] = resultado
+    return resultado
+
+
 def procesar(entrada, salida, formato, pag_ini, pag_fin, tipos=()):
     """tipos: subconjunto de ('figura', 'tabla') que se quieren enlazar."""
     doc = pymupdf.open(entrada)
@@ -138,6 +206,8 @@ def procesar(entrada, salida, formato, pag_ini, pag_fin, tipos=()):
         raise ValueError(f"The bibliography page range does not exist in a PDF with {len(doc)} pages.")
 
     mapa = {k: v for k, v in mapa_leyendas(doc, omitir=paginas_bib).items() if k[0] in tipos} if tipos else {}
+    cuerpo = _fuente_del_cuerpo(doc, paginas_bib)
+    xref_negrita = _negrita_del_documento(doc, cuerpo)
     total = 0
     total_figuras = 0
     sin_destino = []
@@ -194,27 +264,47 @@ def procesar(entrada, salida, formato, pag_ini, pag_fin, tipos=()):
             continue
 
         # 1) Borra el texto de los spans afectados (todos sus caracteres)
-        for span, _ in afectados:
-            for ch in span.get("chars", []):
-                caja = pymupdf.Rect(ch["bbox"])
-                page.add_redact_annot(pymupdf.Rect(caja.x0 + 0.2, caja.y0, caja.x1 - 0.2, caja.y1),
-                                      fill=(1, 1, 1))
-        page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE,
-                              graphics=pymupdf.PDF_REDACT_LINE_ART_NONE)
+        # La redacción de PyMuPDF borra texto vecino de forma impredecible, así que
+        # se tapa cada número con un rectángulo blanco y se escribe encima.
+        for span, asignados in afectados:
+            for ch, cambio in zip(span.get("chars", []), asignados):
+                if cambio is None:
+                    continue
+                x0, y0, x1, y1 = ch["bbox"]
+                page.draw_rect(pymupdf.Rect(x0 + 0.3, y0 + 0.5, x1 - 0.3, y1 - 0.5),
+                               color=None, fill=(1, 1, 1), width=0, overlay=True)
 
         # 2) Reescribe cada carácter: con el estilo nuevo si es enlace, con el original si no
+        cache_fuentes = {}
         for span, asignados in afectados:
             base_color = _rgb(span["color"])
             base_font = "hebo" if (span.get("flags", 0) & 16 or "Bold" in span.get("font", "")) else "helv"
+            original = _fuente_original(doc, page, span.get("font", ""), cache_fuentes)
+            negrita_original = (_cargar_fuente(doc, page, xref_negrita, cache_fuentes)
+                                if xref_negrita else None)
             tamano = span["size"]
             caja_por_cambio = {}
             for ch, cambio in zip(span.get("chars", []), asignados):
+                if cambio is None:
+                    continue
+                codigo = ord(ch["c"])
+                # Fuente original si tiene el carácter; si no, la de respaldo
+                usa_original = original is not None and original[1].has_glyph(codigo)
                 # En las citas solo se colorea el número: corchetes y espacios conservan su estilo
                 if cambio is None or (cambio[5] == "cita" and ch["c"] in "[] "):
-                    fuente, color = base_font, base_color
+                    fuente = original[0] if usa_original else base_font
+                    color = base_color
                 else:
                     _, color_c, negrita, _, _, _ = cambio
-                    fuente, color = ("hebo" if negrita else "helv"), color_c
+                    if negrita:
+                        # Negrita de la misma familia que el cuerpo; si no existe, Helvetica Bold
+                        if negrita_original is not None and negrita_original[1].has_glyph(codigo):
+                            fuente = negrita_original[0]
+                        else:
+                            fuente = "hebo"
+                    else:
+                        fuente = original[0] if usa_original else "helv"
+                    color = color_c
                 page.insert_text(pymupdf.Point(ch["origin"]), ch["c"], fontsize=tamano,
                                  fontname=fuente, color=color)
                 if cambio is not None:
